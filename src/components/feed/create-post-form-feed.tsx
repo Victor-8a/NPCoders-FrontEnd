@@ -5,7 +5,7 @@ import { ImageIcon, Send, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
-export default function CreatePostForm({ onPostCreated }: { onPostCreated: () => void }) {
+export default function CreatePostFormFeed({ onPostCreated }: { onPostCreated: () => void }) {
   const [content, setContent] = useState("")
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -47,10 +47,7 @@ export default function CreatePostForm({ onPostCreated }: { onPostCreated: () =>
       toast.error(error instanceof Error ? error.message : "Error al publicar")
       return
     }
-      // Aquí puedes manejar la respuesta del servidor si es necesario
-      // Por ejemplo, puedes mostrar un mensaje de éxito o redirigir al usuario
-      // Limpiar el contenido del formulario
-     
+
      
       // Limpiar el formulario
       setContent("")
