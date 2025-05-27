@@ -26,7 +26,7 @@ export async function GET() {
     }
 
     // Verifica que responseData.data es un array
-    const posts = Array.isArray(responseData.data) ? responseData.data : []
+const posts = Array.isArray(responseData) ? responseData : []
 
     const serializedData = posts.map((post: any) => ({
       ...post,
