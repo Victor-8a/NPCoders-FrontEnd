@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 
 type Post = {
-  _id: string
+id: string
   content: string
   imagenes: string[]
   createdAt: string
@@ -19,6 +19,7 @@ type Post = {
 export default function Feed() {
   const [loading, setLoading] = useState(true)
   const [posts, setPosts] = useState<Post[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const fetchPosts = async () => {
     try {
@@ -32,9 +33,12 @@ export default function Feed() {
       console.log("Posts recibidos:", data) // Para depuración
       
 
+      
       setPosts(data)
+      setError(null)
     } catch (err) {
       console.error("Error fetching posts:", err)
+      setError("No se pudieron cargar los posts. Intenta recargar la página.")
     } finally {
       setLoading(false)
     }
@@ -45,12 +49,13 @@ export default function Feed() {
   }, [])
 
   if (loading) return <div className="p-4 text-center">Cargando...</div>
+  if (error) return <div className="p-4 text-center text-red-500">{error}</div>
   if (posts.length === 0) return <div className="p-4 text-center">No hay posts disponibles</div>
 
   return (
     <div className="space-y-4 p-4">
       {posts.map(post => (
-        <div key={post._id} className="p-4 border border-green-500/20 rounded-lg">
+        <div key={post.id} className="p-4 border border-green-500/20 rounded-lg">
           <div className="flex items-center space-x-3 mb-3">
             <img 
               src={post.autor.profilePic || '/default-profile.jpg'} 
