@@ -1,17 +1,23 @@
 // app/api/posts/route.ts
 
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData()
+    const tokenCookie = (await cookies()).get('authToken')
+    const token = tokenCookie?.value || ''
 
     const backendResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/posts/posts`, {
       method: 'POST',
       body: formData,
-      credentials: 'include',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
     })
 
+    console.log(tokenCookie, 'token')
     const responseData = await backendResponse.json()
 
     if (!backendResponse.ok) {
