@@ -1,46 +1,39 @@
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    const tokenCookie = (await cookies()).get('authToken')
-    const token = tokenCookie?.value || ''
+    const token = (await cookies()).get('authToken')?.value || ''
+    if (!token) {
+      return NextResponse.json({ message: 'Token no encontrado' }, { status: 401 })
+    }
 
-    const backendResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/posts/posts`, {
+   const backendUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL}/posts/posts`
+       console.log(`Haciendo fetch a backend: ${backendUrl}`)
+
+    const backendResponse = await fetch(backendUrl, {
       method: 'GET',
-      credentials: 'include',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
     })
 
-    const responseData = await backendResponse.json()
-    console.log('Response from backend:', responseData)
+    const result = await backendResponse.json()
 
     if (!backendResponse.ok) {
+      console.error('Error del backend:', result)
       return NextResponse.json(
-        { message: responseData.message || 'Error al obtener posts' },
+        { message: result.message || 'Error al obtener publicaciones' },
         { status: backendResponse.status }
       )
     }
 
-    // Verifica que responseData.data es un array
-const posts = Array.isArray(responseData) ? responseData : []
-
-    const serializedData = posts.map((post: any) => ({
-      ...post,
-      _id: post._id?.toString?.(),
-      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-      updatedAt: post.updatedAt ? new Date(post.updatedAt).toISOString() : null,
-    }))
-
-    return NextResponse.json(serializedData, { status: 200 })
-
-  } catch (error) {
-    console.error('Error al obtener posts:', error)
+    return NextResponse.json(result, { status: 200 })
+  } catch (error: any) {
+    console.error('Error interno en /api/posts:', error)
     return NextResponse.json(
-      { message: 'Error interno del servidor' },
+      { message: 'Error interno', error: error?.message },
       { status: 500 }
     )
   }
