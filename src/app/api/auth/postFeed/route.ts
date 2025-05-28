@@ -1,14 +1,22 @@
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
-  try {
-    const tokenCookie = (await cookies()).get('authToken')
-    const token = tokenCookie?.value || ''
+const BACKEND_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL}/posts/posts`
 
-    const backendResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/posts/posts`, {
+// Función para obtener el token desde cookies manualmente
+function extractTokenFromCookies(cookieHeader: string | null): string {
+  if (!cookieHeader) return ''
+  const match = cookieHeader.match(/authToken=([^;]+)/)
+  return match ? match[1] : ''
+}
+
+// GET: obtener publicaciones
+export async function GET(req: Request) {
+  try {
+    const cookieHeader = req.headers.get('cookie')
+    const token = extractTokenFromCookies(cookieHeader)
+
+    const backendResponse = await fetch(BACKEND_URL, {
       method: 'GET',
-      credentials: 'include',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -16,7 +24,6 @@ export async function GET() {
     })
 
     const responseData = await backendResponse.json()
-    console.log('Response from backend:', responseData)
 
     if (!backendResponse.ok) {
       return NextResponse.json(
@@ -25,8 +32,7 @@ export async function GET() {
       )
     }
 
-    // Verifica que responseData.data es un array
-const posts = Array.isArray(responseData) ? responseData : []
+    const posts = Array.isArray(responseData) ? responseData : []
 
     const serializedData = posts.map((post: any) => ({
       ...post,
@@ -43,5 +49,45 @@ const posts = Array.isArray(responseData) ? responseData : []
       { message: 'Error interno del servidor' },
       { status: 500 }
     )
+  }
+}
+
+// POST: crear publicación
+export async function POST(req: Request) {
+  try {
+    const cookieHeader = req.headers.get('cookie')
+    const token = extractTokenFromCookies(cookieHeader)
+
+    const formData = await req.formData()
+
+    const backendResponse = await fetch(BACKEND_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    })
+
+    const responseText = await backendResponse.text()
+
+    if (!backendResponse.ok) {
+      try {
+        const jsonError = JSON.parse(responseText)
+        return NextResponse.json({ message: jsonError.message || "Error al crear post" }, { status: backendResponse.status })
+      } catch {
+        return NextResponse.json({ message: responseText || "Error desconocido" }, { status: backendResponse.status })
+      }
+    }
+
+    try {
+      const responseData = JSON.parse(responseText)
+      return NextResponse.json(responseData, { status: 201 })
+    } catch {
+      return NextResponse.json({ message: "Post creado exitosamente" }, { status: 201 })
+    }
+
+  } catch (error) {
+    console.error("Error interno al crear post:", error)
+    return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 })
   }
 }
