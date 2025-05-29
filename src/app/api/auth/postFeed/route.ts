@@ -1,93 +1,40 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 
-const BACKEND_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL}/posts/posts`
-
-// Función para obtener el token desde cookies manualmente
-function extractTokenFromCookies(cookieHeader: string | null): string {
-  if (!cookieHeader) return ''
-  const match = cookieHeader.match(/authToken=([^;]+)/)
-  return match ? match[1] : ''
-}
-
-// GET: obtener publicaciones
-export async function GET(req: Request) {
+export async function POST(request: Request) {
   try {
-    const cookieHeader = req.headers.get('cookie')
-    const token = extractTokenFromCookies(cookieHeader)
+    const token = (await cookies()).get('authToken')?.value || ''
+    if (!token) {
+      return NextResponse.json({ message: 'Token no encontrado' }, { status: 401 })
+    }
 
-    const backendResponse = await fetch(BACKEND_URL, {
+   const backendUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL}/posts/posts`
+       console.log(`Haciendo fetch a backend: ${backendUrl}`)
+
+    const backendResponse = await fetch(backendUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
     })
 
-    const responseData = await backendResponse.json()
+    const result = await backendResponse.json()
 
     if (!backendResponse.ok) {
+      console.error('Error del backend:', result)
       return NextResponse.json(
-        { message: responseData.message || 'Error al obtener posts' },
+        { message: result.message || 'Error al obtener publicaciones' },
         { status: backendResponse.status }
       )
     }
 
-    const posts = Array.isArray(responseData) ? responseData : []
-
-    const serializedData = posts.map((post: any) => ({
-      ...post,
-      _id: post._id?.toString?.(),
-      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-      updatedAt: post.updatedAt ? new Date(post.updatedAt).toISOString() : null,
-    }))
-
-    return NextResponse.json(serializedData, { status: 200 })
-
-  } catch (error) {
-    console.error('Error al obtener posts:', error)
+    return NextResponse.json(result, { status: 200 })
+  } catch (error: any) {
+    console.error('Error interno en /api/posts:', error)
     return NextResponse.json(
-      { message: 'Error interno del servidor' },
+      { message: 'Error interno', error: error?.message },
       { status: 500 }
     )
-  }
-}
-
-// POST: crear publicación
-export async function POST(req: Request) {
-  try {
-    const cookieHeader = req.headers.get('cookie')
-    const token = extractTokenFromCookies(cookieHeader)
-
-    const formData = await req.formData()
-
-    const backendResponse = await fetch(BACKEND_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    })
-
-    const responseText = await backendResponse.text()
-
-    if (!backendResponse.ok) {
-      try {
-        const jsonError = JSON.parse(responseText)
-        return NextResponse.json({ message: jsonError.message || "Error al crear post" }, { status: backendResponse.status })
-      } catch {
-        return NextResponse.json({ message: responseText || "Error desconocido" }, { status: backendResponse.status })
-      }
-    }
-
-    try {
-      const responseData = JSON.parse(responseText)
-      return NextResponse.json(responseData, { status: 201 })
-    } catch {
-      return NextResponse.json({ message: "Post creado exitosamente" }, { status: 201 })
-    }
-
-  } catch (error) {
-    console.error("Error interno al crear post:", error)
-    return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 })
   }
 }

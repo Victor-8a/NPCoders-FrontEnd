@@ -1,21 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { ImageIcon, Send, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 export default function CreatePostFormFeed({ onPostCreated }: { onPostCreated: () => void }) {
   const [content, setContent] = useState("")
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [isExpanded, setIsExpanded] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!content.trim() && !imageFile) {
+    if (!content.trim() && imageFiles.length === 0) {
       toast.warning("Debes escribir algo o subir una imagen")
       return
     }
@@ -23,38 +24,43 @@ export default function CreatePostFormFeed({ onPostCreated }: { onPostCreated: (
     setIsSubmitting(true)
 
     try {
-      const formData = new FormData()
-      formData.append("content", content)
-      if (imageFile) {
-        formData.append("image", imageFile)
-      }
+      // Convertir imágenes a base64
+      const imageBase64Strings = await Promise.all(
+        imageFiles.map(file => {
+          return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result?.toString() || '')
+            reader.onerror = reject
+            reader.readAsDataURL(file)
+          })
+        })
+      )
 
-      // CAMBIO CLAVE: Usamos el endpoint de Next.js
-      try {
       const response = await fetch("/api/posts", {
         method: "POST",
-        body: formData,
-        credentials: "include"
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content,
+          images: imageBase64Strings,
+        }),
+        credentials: "include",
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Error al publicar")
-      }
+      const responseData = await response.json()
       
-    } catch (error) {
-      console.error("Error:", error)
-      toast.error(error instanceof Error ? error.message : "Error al publicar")
-      return
-    }
+      if (!response.ok) {
+        throw new Error(responseData.message || "Error al publicar")
+      }
 
-     
-      // Limpiar el formulario
-      setContent("")
-      setImageFile(null)
-      setImagePreview(null)
-      setIsExpanded(false)
-      toast.success("¡Publicación creada con éxito!")
+      if (imageFiles.length > 0) {
+        toast.success(`Publicación creada con ${imageFiles.length} imagen(es)`)
+      } else {
+        toast.success("Publicación creada con éxito!")
+      }
+
+      resetForm()
       onPostCreated()
     } catch (error) {
       console.error("Error:", error)
@@ -64,31 +70,66 @@ export default function CreatePostFormFeed({ onPostCreated }: { onPostCreated: (
     }
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.warning("La imagen debe ser menor a 5MB")
-        return
-      }
-
-      if (!file.type.match(/image\/(jpeg|png|jpg|gif)/)) {
-        toast.warning("Formato no soportado. Usa JPEG, PNG o GIF")
-        return
-      }
-
-      setImageFile(file)
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        setImagePreview(event.target?.result as string)
-      }
-      reader.readAsDataURL(file)
+  const resetForm = () => {
+    setContent("")
+    setImageFiles([])
+    setImagePreviews([])
+    setIsExpanded(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
     }
   }
 
-  const removeImage = () => {
-    setImageFile(null)
-    setImagePreview(null)
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return
+
+    const files = Array.from(e.target.files)
+    const validFiles: File[] = []
+    const invalidFiles: string[] = []
+
+    files.forEach(file => {
+      if (file.size > 5 * 1024 * 1024) {
+        invalidFiles.push(`${file.name} (tamaño excede 5MB)`)
+        return
+      }
+
+      if (!file.type.match(/image\/(jpeg|png|jpg|gif|webp)/)) {
+        invalidFiles.push(`${file.name} (formato no soportado)`)
+        return
+      }
+
+      validFiles.push(file)
+    })
+
+    if (invalidFiles.length > 0) {
+      toast.warning(
+        `Archivos no válidos: ${invalidFiles.join(", ")}. Formatos soportados: JPEG, PNG, JPG, GIF, WEBP. Tamaño máximo: 5MB`
+      )
+    }
+
+    if (validFiles.length === 0) return
+
+    // Generar vistas previas
+    const newPreviews: string[] = []
+    validFiles.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          newPreviews.push(event.target.result as string)
+          if (newPreviews.length === validFiles.length) {
+            setImagePreviews(prev => [...prev, ...newPreviews])
+          }
+        }
+      }
+      reader.readAsDataURL(file)
+    })
+
+    setImageFiles(prev => [...prev, ...validFiles])
+  }
+
+  const removeImage = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index))
+    setImagePreviews(prev => prev.filter((_, i) => i !== index))
   }
 
   return (
@@ -101,8 +142,6 @@ export default function CreatePostFormFeed({ onPostCreated }: { onPostCreated: (
               alt="Tu avatar" 
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 border-2 border-cyan-400/20 pointer-events-none" />
-            <div className="absolute top-0 left-1/2 w-1 h-1 bg-cyan-400 transform -translate-x-1/2 group-hover:opacity-0 transition-opacity" />
           </div>
         </div>
 
@@ -125,25 +164,27 @@ export default function CreatePostFormFeed({ onPostCreated }: { onPostCreated: (
             />
           </div>
 
-          {imagePreview && (
-            <div className="relative rounded-xl overflow-hidden border border-green-500/30 group">
-              <img
-                src={imagePreview}
-                alt="Preview"
-                className="w-full h-auto max-h-80 object-contain bg-gray-800"
-              />
-              <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-cyan-400/70" />
-              <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-cyan-400/70" />
-              <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-cyan-400/70" />
-              <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-cyan-400/70" />
-              <button
-                type="button"
-                onClick={removeImage}
-                disabled={isSubmitting}
-                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/70 flex items-center justify-center hover:bg-red-500/90 transition-colors group-hover:opacity-100 opacity-80"
-              >
-                <X className="w-4 h-4 text-white" />
-              </button>
+          {imagePreviews.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              {imagePreviews.map((preview, index) => (
+                <div key={index} className="relative rounded-xl overflow-hidden border border-green-500/30 group">
+                  <div className="relative pt-[100%]">
+                    <img
+                      src={preview}
+                      alt={`Preview ${index + 1}`}
+                      className="absolute top-0 left-0 w-full h-full object-cover bg-gray-800"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeImage(index)}
+                    disabled={isSubmitting}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/70 flex items-center justify-center hover:bg-red-500/90 transition-colors"
+                  >
+                    <X className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -154,24 +195,30 @@ export default function CreatePostFormFeed({ onPostCreated }: { onPostCreated: (
                 isSubmitting ? "opacity-50 pointer-events-none" : ""
               )}>
                 <ImageIcon className="w-5 h-5 text-green-400" />
-                <span className="sr-only">Subir imagen</span>
                 <input
+                  ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/jpg,image/gif"
+                  accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
                   onChange={handleImageUpload}
                   className="hidden"
                   disabled={isSubmitting}
+                  multiple
                 />
               </label>
+              {imageFiles.length > 0 && (
+                <span className="text-xs text-gray-400 ml-2">
+                  {imageFiles.length} imagen(es) seleccionada(s)
+                </span>
+              )}
             </div>
 
             <button
               type="submit"
-              disabled={(!content.trim() && !imageFile) || isSubmitting}
+              disabled={(!content.trim() && imageFiles.length === 0) || isSubmitting}
               className={cn(
-                "px-4 py-2 rounded-full text-sm font-bold flex items-center space-x-2 transition-all duration-300",
-                (content.trim() || imageFile) && !isSubmitting
-                  ? "bg-green-500 text-black hover:bg-green-400 shadow-lg shadow-green-500/30 hover:shadow-green-500/50"
+                "px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2 transition-all",
+                (content.trim() || imageFiles.length > 0) && !isSubmitting
+                  ? "bg-green-500 text-black hover:bg-green-400 shadow-lg shadow-green-500/20 hover:shadow-green-500/30"
                   : "bg-green-500/20 text-gray-400 cursor-not-allowed",
                 isSubmitting ? "pr-3 pl-4" : "px-4"
               )}
