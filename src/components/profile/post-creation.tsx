@@ -1,210 +1,172 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useRef } from "react"
-import Image from "next/image"
+import { useRef, useState } from "react"
+import { ImageIcon, Send, X, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ImageIcon, X, Smile, MapPin, Clock } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import Image from "next/image"
+import { cn } from "@/lib/utils"
 
-export default function PostCreation({ onPostCreated }: { onPostCreated: (post: any) => void }) {
-  const [text, setText] = useState("")
-  const [images, setImages] = useState<string[]>([])
+export default function PostCreation({ onPostCreated }: { onPostCreated: (newPost: any) => void }) {
+  const [content, setContent] = useState("")
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const MAX_CHARS = 280
-  const remainingChars = MAX_CHARS - text.length
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.warning("La imagen debe ser menor a 5MB")
+        return
+      }
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (e.target.value.length <= MAX_CHARS) {
-      setText(e.target.value)
+      if (!file.type.match(/image\/(jpeg|png|jpg|gif)/)) {
+        toast.warning("Formato no soportado. Usa JPEG, PNG o GIF")
+        return
+      }
+
+      setImageFile(file)
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        setImagePreview(event.target?.result as string)
+      }
+      reader.readAsDataURL(file)
     }
   }
 
-  const handleImageClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!content.trim() && !imageFile) {
+      toast.warning("Debes escribir algo o subir una imagen")
+      return
     }
-  }
-
-  const handleImageChange = () => {
-    // Simulate image upload with placeholder
-    if (images.length < 4) {
-      const newImageId = Date.now()
-      setImages([...images, `/placeholder.svg?height=300&width=300&text=Image${newImageId}`])
-    }
-  }
-
-  const removeImage = (index: number) => {
-    const newImages = [...images]
-    newImages.splice(index, 1)
-    setImages(newImages)
-  }
-
-  const handleSubmit = () => {
-    if (text.trim() === "" && images.length === 0) return
 
     setIsSubmitting(true)
 
-    // Create new post object
-    const newPost = {
-      id: Date.now(),
-      text,
-      images,
-      timestamp: new Date().toISOString(),
-      likes: 0,
-      comments: 0,
-      shares: 0,
-      user: {
-        name: "Tu Nombre",
-        username: "tu_usuario",
-        avatar: "/placeholder.svg?height=100&width=100&text=Tu+Foto",
-      },
-    }
+    const formData = new FormData()
+    formData.append("content", content)
+    if (imageFile) formData.append("image", imageFile)
 
-    // Simulate network delay
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/auth/postFeed", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      })
+
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.message || "Error al publicar")
+      }
+
+      const newPost = await res.json()
+
+      setContent("")
+      setImageFile(null)
+      setImagePreview(null)
+      toast.success("¡Publicación creada con éxito!")
       onPostCreated(newPost)
-      setText("")
-      setImages([])
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : "Error al publicar")
+    } finally {
       setIsSubmitting(false)
-    }, 1000)
+    }
   }
 
-  // Simulated emoji list
-  const emojis = ["😀", "😎", "👽", "🔥", "💥", "⚡", "🦸", "🦹", "🛸", "🌌", "🌟", "🚀"]
+  const removeImage = () => {
+    setImageFile(null)
+    setImagePreview(null)
+  }
 
   return (
-    <div className="bg-black/60 border border-green-500/30 rounded-lg p-4 mb-6">
-      <div className="flex gap-3">
-        <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-500 flex-shrink-0">
+    <form onSubmit={handleSubmit} className="p-5 bg-black/60 border border-green-500/30 rounded-lg space-y-4">
+      <div className="flex gap-4">
+        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-green-500">
           <Image
-            src="/placeholder.svg?height=100&width=100&text=Tu+Foto"
+            src="/user-avatar.jpg"
             alt="Tu foto de perfil"
-            width={40}
-            height={40}
-            className="object-cover"
+            width={48}
+            height={48}
+            className="object-cover w-full h-full"
           />
         </div>
 
         <div className="flex-1">
           <Textarea
-            placeholder="¿Qué está pasando en el universo?"
-            value={text}
-            onChange={handleTextChange}
+            placeholder="¿Qué está pasando en tu universo?"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
             className="bg-transparent border-none text-white resize-none min-h-[100px] focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-gray-500 text-lg"
+            disabled={isSubmitting}
           />
 
-          {/* Image preview */}
-          {images.length > 0 && (
-            <div className={`grid gap-2 mb-3 ${images.length === 1 ? "" : "grid-cols-2"}`}>
-              {images.map((img, index) => (
-                <div key={index} className="relative rounded-lg overflow-hidden aspect-square">
-                  <Image
-                    src={img || "/placeholder.svg"}
-                    alt={`Uploaded image ${index + 1}`}
-                    fill
-                    className="object-cover"
-                  />
-                  <button
-                    onClick={() => removeImage(index)}
-                    className="absolute top-1 right-1 bg-black/70 rounded-full p-1 hover:bg-black"
-                  >
-                    <X className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-              ))}
+          {imagePreview && (
+            <div className="relative rounded-xl overflow-hidden border border-green-500/30 group mt-3">
+              <img
+                src={imagePreview}
+                alt="Preview"
+                className="w-full h-auto max-h-80 object-contain bg-gray-800"
+              />
+              <button
+                type="button"
+                onClick={removeImage}
+                disabled={isSubmitting}
+                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/70 flex items-center justify-center hover:bg-red-500/90 transition-colors group-hover:opacity-100 opacity-80"
+              >
+                <X className="w-4 h-4 text-white" />
+              </button>
             </div>
           )}
 
-          <div className="flex items-center justify-between mt-3 border-t border-green-500/20 pt-3">
-            <div className="flex gap-2">
-              <input type="file" ref={fileInputRef} onChange={handleImageChange} className="hidden" accept="image/*" />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleImageClick}
-                className="rounded-full text-green-400 hover:bg-green-500/20 hover:text-green-300"
-                disabled={images.length >= 4 || isSubmitting}
-              >
-                <ImageIcon className="w-5 h-5" />
-              </Button>
+          <div className="flex items-center justify-between mt-3 pt-2 border-t border-green-500/20">
+            <label
+              className={cn(
+                "inline-flex items-center justify-center p-2 rounded-full cursor-pointer hover:bg-green-900/30 transition-colors",
+                isSubmitting ? "opacity-50 pointer-events-none" : ""
+              )}
+            >
+              <ImageIcon className="w-5 h-5 text-green-400" />
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/jpg,image/gif"
+                onChange={handleImageUpload}
+                className="hidden"
+                ref={fileInputRef}
+                disabled={isSubmitting}
+              />
+            </label>
 
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="rounded-full text-green-400 hover:bg-green-500/20 hover:text-green-300"
-                >
-                  <Smile className="w-5 h-5" />
-                </Button>
-
-                <AnimatePresence>
-                  {showEmojiPicker && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute bottom-full left-0 mb-2 bg-gray-900 border border-green-500/30 rounded-lg p-2 shadow-lg z-10"
-                    >
-                      <div className="grid grid-cols-6 gap-2">
-                        {emojis.map((emoji, index) => (
-                          <button
-                            key={index}
-                            onClick={() => {
-                              setText(text + emoji)
-                              setShowEmojiPicker(false)
-                            }}
-                            className="w-8 h-8 flex items-center justify-center hover:bg-green-500/20 rounded"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full text-green-400 hover:bg-green-500/20 hover:text-green-300"
-              >
-                <MapPin className="w-5 h-5" />
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div
-                className={`text-sm ${remainingChars < 20 ? "text-orange-400" : "text-gray-400"} ${remainingChars < 0 ? "text-red-500" : ""}`}
-              >
-                {remainingChars}
-              </div>
-
-              <Button
-                onClick={handleSubmit}
-                disabled={isSubmitting || (text.trim() === "" && images.length === 0)}
-                className="bg-green-500 hover:bg-green-600 text-black font-bold rounded-full px-5"
-              >
-                {isSubmitting ? (
-                  <div className="flex items-center">
-                    <Clock className="w-4 h-4 mr-2 animate-spin" />
-                    Publicando...
-                  </div>
-                ) : (
-                  "Publicar"
-                )}
-              </Button>
-            </div>
+            <Button
+              type="submit"
+              disabled={(!content.trim() && !imageFile) || isSubmitting}
+              className={cn(
+                "px-4 py-2 rounded-full text-sm font-bold flex items-center space-x-2 transition-all duration-300",
+                (content.trim() || imageFile) && !isSubmitting
+                  ? "bg-green-500 text-black hover:bg-green-400 shadow-lg shadow-green-500/30 hover:shadow-green-500/50"
+                  : "bg-green-500/20 text-gray-400 cursor-not-allowed",
+                isSubmitting ? "pr-3 pl-4" : "px-4"
+              )}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Publicando...</span>
+                </>
+              ) : (
+                <>
+                  <span>Publicar</span>
+                  <Send className="w-4 h-4" />
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </div>
-    </div>
+    </form>
   )
 }
